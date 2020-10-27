@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+const _React = require('react')
+const importJsx = require('import-jsx')
+const { _render } = require('ink')
+const _meow = require('meow')
+const itsg = require('./itsg33a')
+const _ui = importJsx('./ui')
+
+const _fs = require('fs')
+const yaml = require('js-yaml')
+
+function readInput() {
+	return new Promise((resolve, reject) => {
+		var input = ''
+		process.stdin.setEncoding('utf8')
+		process.stdin.on('readable', function () {
+			var chunk = process.stdin.read()
+			if (chunk !== null) {
+				input += chunk
+			}
+		})
+		process.stdin.on('end', function () {
+			resolve(input)
+		})
+		process.stdin.on('error', reject)
+	})
+}
+
+function _SQLInstance(config) {
+	const object = `${config.metadata.namespace ?? 'default'}:${config.kind}:${
+		config.metadata.name
+	}`
+
+	const output = []
+	if (config.spec?.settings?.backupConfiguration?.enabled === true) {
+		output.push({
+			id: 'CP-9',
+			object,
+			key: 'spec.settings.backupConfiguration.enabled',
+			value: true,
+		})
+	}
+
+	if (config.spec?.region === 'northamerica-northeast1') {
+		output.push({
+			id: 'PE-18',
+			object,
+			key: 'spec.region',
+			value: 'northamerica-northeast1',
+		})
+	}
+
+	if (config.spec?.region === 'northamerica-northeast1') {
+		output.push({
+			id: 'SC-8',
+			object,
+			key: 'spec.settings.ipConfiguration.requireSsl',
+			value: true,
+		})
+	}
+
+	return output
+}
+
+const controls = {}
+
+try {
+	readInput().then((input) => {
+		yaml.safeLoadAll(input, function (config) {
+			if (config === null) return
+
+//			console.log(JSON.stringify(config, null, 2))
+			if (config.kind === 'SQLInstance') {
+				if (config.spec?.settings?.backupConfiguration?.enabled === true) {
+					controls['CP-9'] = {
+						name: itsg['CP-9'].name,
+						satisfiedBy: [
+							{
+								[`${config.metadata.namespace ?? 'default'}:${config.kind}:${
+									config.metadata.name
+								}`]: `spec.settings.backupConfiguration.enabled: true`,
+							},
+						],
+					}
+				}
+
+				if (config.spec?.region === 'northamerica-northeast1') {
+					controls['PE-18'] = {
+						name: itsg['PE-18'].name,
+						satisfiedBy: [
+							{
+								[`${config.metadata.namespace ?? 'default'}:${config.kind}:${
+									config.metadata.name
+								}`]: `spec.region: northamerica-northeast1`,
+							},
+						],
+					}
+				}
+
+				if (config.spec?.settings?.ipConfiguration?.requireSsl === true) {
+					controls['SC-8'] = {
+						name: itsg['SC-8'].name,
+						satisfiedBy: [
+							{
+								[`${config.metadata.namespace ?? 'default'}:${config.kind}:${
+									config.metadata.name
+								}`]: `spec.settings.ipConfiguration.requireSsl: true`,
+							},
+						],
+					}
+				}
+			}
+		})
+
+		console.log(JSON.stringify(controls, null, 2))
+	})
+} catch (e) {
+	console.log(e)
+}
+
+// const cli = meow(`
+// 	Usage
+// 	  $ itsg
+
+// 	Options
+// 		--name  Your name
+
+// 	Examples
+// 	  $ itsg --name=Jane
+// 	  Hello, Jane
+// `)
+
+// render(React.createElement(ui, cli.flags))

@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tracker-test
+  annotations:
+    cnrm.cloud.google.com/folder-id: "750563276794"
+    goc/projectName: "Tracker 2.0"
+    goc/codeRepository: "https://github.com/canada-ca/tracker"
+    goc/infraRepository: "https://github.com/canada-ca/tracker-infrastructure"
+    goc/domain: "https://pulse.alpha.canada.ca"
+    goc/imageRegistry: "gcr.io/track-compliance"
+    goc/serviceOwner: "Po.Tea-Duncan@tbs-sct.gc.ca"
+---
+apiVersion: resourcemanager.cnrm.cloud.google.com/v1beta1
+kind: Project
+metadata:
+  annotations:
+    # Replace "${FOLDER_ID?}" with the numeric ID for your folder
+    cnrm.cloud.google.com/folder-id: "750563276794"
+    cnrm.cloud.google.com/auto-create-network: "false"
+  labels:
+    label-one: "value-one"
+  name: tracker-test
+  namespace: tracker-test
+spec:
+  name: Config Connector Sample
+  # Billing account is only usable within the org
+  billingAccountRef:
+    external: 0198CA-8F9F6F-82E6B3
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: owner-mikewilliamson
+  namespace: tracker-test
+spec:
+  # account secured with mfa
+  member: user:mike.williamson@gcdigital.canada.ca
+  role: roles/project.owner
+  resourceRef:
+    kind: Project
+    name: tracker-test
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMServiceAccount
+metadata:
+  name: gke-least-privilege-account
+  namespace: tracker-test
+spec:
+  displayName: least privilege GKE service account
+# This account only needs logging.logWriter, monitoring.metricWriter and monitoring.viewer
+# Those role bindings are done below.
+# https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster#config-connector_1
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: policy-logging
+  namespace: tracker-test
+spec:
+  # assign the least privilege account logWriter permission
+  member: serviceAccount:gke-least-privilege-account@track-compliance.iam.gserviceaccount.com
+  role: roles/logging.logWriter
+  resourceRef:
+    kind: Project
+    name: tracker-test
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: policy-metrics-writer
+  namespace: tracker-test
+spec:
+  # assign the least privilege account metricWriter permission
+  member: serviceAccount:gke-least-privilege-account@track-compliance.iam.gserviceaccount.com
+  role: roles/monitoring.metricWriter
+  resourceRef:
+    kind: Project
+    name: tracker-test
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: policy-monitoring
+  namespace: tracker-test
+spec:
+  # assign the least privilege account monitoring viewer permission
+  member: serviceAccount:gke-least-privilege-account@track-compliance.iam.gserviceaccount.com
+  role: roles/monitoring.viewer
+  resourceRef:
+    kind: Project
+    name: tracker-test
+---
+# Our GKE cluster
+apiVersion: container.cnrm.cloud.google.com/v1beta1
+kind: ContainerCluster
+metadata:
+  annotations:
+    cnrm.cloud.google.com/remove-default-node-pool: "false"
+  name: tracker-two-dot-oh
+  namespace: tracker-test
+spec:
+  # Place this cluster in Montreal for data residency
+  # https://cloud.google.com/about/locations/montreal
+  location: northamerica-northeast1
+  initialNodeCount: 1
+  # Logs are centralized by default in Stackdriver
+  # Our least privilege account gives nodes permission to write to these
+  # logging and monitoring services
+  loggingService: logging.googleapis.com/kubernetes
+  monitoringService: monitoring.googleapis.com/kubernetes
+  masterAuth:
+    # No credentials here since nobody should log into master nodes
+    clientCertificateConfig:
+      issueClientCertificate: false
+  # Secrets are not currently encrypted within etcd
+  # databaseEncryption:
+  #   keyName: string
+  #   state: string
+  addonsConfig:
+    # Enable "Cloud Run for Anthos"
+    # We use this feature for the domain scanning
+    cloudrunConfig:
+      disabled: false
+  # Enable Workload Identity
+  workloadIdentityConfig:
+    identityNamespace: "track-compliance.svc.id.goog"
+  enableShieldedNodes: true
+  # Subscribe to a release channel so Kubernetes is auto-upgraded for us
+  releaseChannel: # immutable field
+    channel: REGULAR # RAPID, REGULAR, or STABLE
+  nodeConfig:
+    diskSizeGb: 100
+    # Node auto-upgrades are enabled by default
+    imageType: COS_CONTAINERD
+    machineType: n1-standard-4
+    diskType: pd-standard
+    shieldedInstanceConfig: # immutable fields
+      enableIntegrityMonitoring: true
+      enableSecureBoot: true
+    serviceAccountRef:
+      # Nodes should use our least privilege account
+      external: gke-least-privilege-account@track-compliance.iam.gserviceaccount.com
+---
+# This address is independant of the cluster and will survive teardown/rebuilds.
+# DNS should be pointed at this address.
+# It will be visible via `gcloud compute address list`
+# Istio ingress controller is configured to use this address with:
+# ```
+# istioctl manifest generate \
+#  --set values.gateways.istio-ingressgateway.loadBalancerIP=X.X.X.X
+# ```
+apiVersion: compute.cnrm.cloud.google.com/v1beta1
+kind: ComputeAddress
+metadata:
+  name: tracker-ip
+  namespace: tracker-test
+spec:
+  addressType: EXTERNAL
+  description: The regional ip for the Tracker project
+  location: northamerica-northeast1
+  ipVersion: IPV4

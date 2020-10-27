@@ -1,0 +1,13 @@
+#!/usr/bin/env node
+
+const { finished } = require('stream/promises')
+
+
+async function run() {
+	await finished(process.stdin.read)
+	console.log('Stream is done reading.')
+}
+
+run().catch(console.error)
+rs.resume() // Drain the stream.
+
