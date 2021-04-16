@@ -10,6 +10,8 @@ npm install
 ```
 
 ## Usage
+
+```
 $ cat sqlinstance.yaml
 apiVersion: sql.cnrm.cloud.google.com/v1beta1
 kind: SQLInstance
